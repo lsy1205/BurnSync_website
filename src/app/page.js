@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { auth } from '@/app/firebase/config';
 import { signOut } from 'firebase/auth';
-
+import Chart from 'chart.js/auto';
 
 export default function Home() {
   const router = useRouter();
@@ -18,12 +18,9 @@ export default function Home() {
     squats: { sets: 0, reps: 0 },
     dumbbells: { sets: 0, reps: 0 }
   });
-  const [sensorData, setSensorData] = useState({
-    accelerometer: { x: 0, y: 0, z: 0 },
-    gyroscope: { x: 0, y: 0, z: 0 }
-  });
   const [bleDevice, setBleDevice] = useState(null);
   const [bleCharacteristic, setBleCharacteristic] = useState(null);
+  const [charts, setCharts] = useState({ accel: null, gyro: null });
 
   useEffect(() => {
     const user = sessionStorage.getItem('user');
@@ -35,6 +32,101 @@ export default function Home() {
       setUsername(storedUsername);
     }
   }, [router]);
+
+  useEffect(() => {
+    let accelChart = null;
+    let gyroChart = null;
+
+    const initCharts = () => {
+      const accelCtx = document.getElementById('accelChart')?.getContext('2d');
+      const gyroCtx = document.getElementById('gyroChart')?.getContext('2d');
+
+      if (accelCtx && gyroCtx) {
+        accelChart = new Chart(accelCtx, {
+          type: 'line',
+          data: {
+            labels: Array(50).fill(''),
+            datasets: [
+              { label: 'X', borderColor: 'red', data: [], tension: 0.4 },
+              { label: 'Y', borderColor: 'green', data: [], tension: 0.4 },
+              { label: 'Z', borderColor: 'blue', data: [], tension: 0.4 }
+            ]
+          },
+          options: {
+            animation: false,
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { 
+              y: { beginAtZero: true },
+              x: { display: false }
+            }
+          }
+        });
+
+        gyroChart = new Chart(gyroCtx, {
+          type: 'line',
+          data: {
+            labels: Array(50).fill(''),
+            datasets: [
+              { label: 'X', borderColor: 'orange', data: [], tension: 0.4 },
+              { label: 'Y', borderColor: 'purple', data: [], tension: 0.4 },
+              { label: 'Z', borderColor: 'brown', data: [], tension: 0.4 }
+            ]
+          },
+          options: {
+            animation: false,
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { 
+              y: { beginAtZero: true },
+              x: { display: false }
+            }
+          }
+        });
+
+        setCharts({ accel: accelChart, gyro: gyroChart });
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      initCharts();
+    }
+
+    return () => {
+      if (accelChart) {
+        accelChart.destroy();
+      }
+      if (gyroChart) {
+        gyroChart.destroy();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      // 組件卸載時斷開 BLE 連接
+      const disconnectBLE = async () => {
+        if (isConnected) {
+          try {
+            if (bleCharacteristic) {
+              await bleCharacteristic.stopNotifications();
+            }
+            if (bleDevice) {
+              await bleDevice.gatt.disconnect();
+            }
+            setBleDevice(null);
+            setBleCharacteristic(null);
+            setIsConnected(false);
+            console.log('Device disconnected on unmount');
+          } catch (error) {
+            console.error('Error disconnecting on unmount:', error);
+          }
+        }
+      };
+      
+      disconnectBLE();
+    };
+  }, [bleDevice, bleCharacteristic, isConnected]);
 
   const handleLogout = async () => {
     try {
@@ -92,14 +184,11 @@ export default function Home() {
           const gyroY = data.getFloat32(16, true);
           const gyroZ = data.getFloat32(20, true);
 
-          console.log('Received sensor data:', {
-            accelerometer: { x: accelX, y: accelY, z: accelZ },
-            gyroscope: { x: gyroX, y: gyroY, z: gyroZ }
-          });
-
-        // updateChart(accelChart, [accelX, accelY, accelZ]);
-        // updateChart(gyroChart, [gyroX, gyroY, gyroZ]);
-      });
+          updateCharts(
+            [accelX, accelY, accelZ],
+            [gyroX, gyroY, gyroZ]
+          );
+        });
 
         await characteristic.startNotifications();
         console.log('Started notifications');
@@ -137,6 +226,28 @@ export default function Home() {
         [field]: Math.max(0, parseInt(value) || 0)
       }
     }));
+  };
+
+  const updateCharts = (accelData, gyroData) => {
+    if (charts.accel && charts.gyro) {
+      // 更新加速度圖表
+      charts.accel.data.datasets.forEach((dataset, index) => {
+        dataset.data.push(accelData[index]);
+        if (dataset.data.length > 50) {
+          dataset.data.shift();
+        }
+      });
+      charts.accel.update('none');
+
+      // 更新陀螺儀圖表
+      charts.gyro.data.datasets.forEach((dataset, index) => {
+        dataset.data.push(gyroData[index]);
+        if (dataset.data.length > 50) {
+          dataset.data.shift();
+        }
+      });
+      charts.gyro.update('none');
+    }
   };
 
   return (
@@ -223,6 +334,7 @@ export default function Home() {
           >
             {isConnected ? 'Disconnect Device' : 'Connect BLE Device'}
           </button>
+          <div id="data" className="mt-4 p-4 text-center rounded-lg text-gray-700">{isConnected ? "Receiving data..." : "No device connected"}</div>
         </div>
 
         {/* Calories Input Section */}
@@ -290,18 +402,7 @@ export default function Home() {
             <div className="bg-green-50 p-4 rounded-xl">
               <h4 className="font-medium text-gray-800 mb-3">Accelerometer</h4>
               <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-gray-700">X:</span>
-                  <span className="font-mono text-gray-800">{sensorData.accelerometer.x.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-700">Y:</span>
-                  <span className="font-mono text-gray-800">{sensorData.accelerometer.y.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-700">Z:</span>
-                  <span className="font-mono text-gray-800">{sensorData.accelerometer.z.toFixed(2)}</span>
-                </div>
+                <canvas id="accelChart"></canvas>
               </div>
             </div>
 
@@ -309,18 +410,7 @@ export default function Home() {
             <div className="bg-green-50 p-4 rounded-xl">
               <h4 className="font-medium text-gray-800 mb-3">Gyroscope</h4>
               <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-gray-700">X:</span>
-                  <span className="font-mono text-gray-800">{sensorData.gyroscope.x.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-700">Y:</span>
-                  <span className="font-mono text-gray-800">{sensorData.gyroscope.y.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-700">Z:</span>
-                  <span className="font-mono text-gray-800">{sensorData.gyroscope.z.toFixed(2)}</span>
-                </div>
+                <canvas id="gyroChart"></canvas>
               </div>
             </div>
           </div>
