@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { auth } from '@/app/firebase/config';
 import { signOut } from 'firebase/auth';
 import Chart from 'chart.js/auto';
-
+import { getUser } from './firebase/firestore';
 export default function Home() {
   const router = useRouter();
   const [username, setUsername] = useState('');
@@ -12,27 +12,59 @@ export default function Home() {
   const [isConnected, setIsConnected] = useState(false);
   const [targetCalories, setTargetCalories] = useState('');
   const [suggestion, setSuggestion] = useState('');
-  const [exercises, setExercises] = useState({
-    pushups: { sets: 0, reps: 0 },
-    situps: { sets: 0, reps: 0 },
-    squats: { sets: 0, reps: 0 },
-    dumbbells: { sets: 0, reps: 0 }
+
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // user information
+  const [userInfo, setUserInfo] = useState({
+    height: null,
+    weight: null,
+    birthday: null,
+    gender: null
   });
+  const [exercises, setExercises] = useState({
+    pushup: { set: 0, rep: 0 },
+    situp: { set: 0, rep: 0 },
+    squat: { set: 0, rep: 0 },
+    dumbbell: { set: 0, rep: 0 }
+  });
+
   const [bleDevice, setBleDevice] = useState(null);
   const [bleCharacteristic, setBleCharacteristic] = useState(null);
   const [charts, setCharts] = useState({ accel: null, gyro: null });
 
   useEffect(() => {
     const user = sessionStorage.getItem('user');
+    const uid = sessionStorage.getItem('uid');
     const storedUsername = sessionStorage.getItem('username');
     
     if (!user) {
       router.push('/sign-in');
     } else if (storedUsername) {
       setUsername(storedUsername);
+      const getData = async(uid) => {
+        try{
+          setIsLoading(true);
+          const data = await getUser(uid);
+          const userExercise = {
+            pushup: data.pushup,
+            situp: data.situp,
+            squat: data.squat,
+            dumbbell: data.dumbbell
+          }
+          console.log(exercises)
+          setExercises(userExercise);
+          console.log(userExercise);
+          setIsLoading(false);
+        }catch(e){
+          console.log(e);
+        }
+      }
+      getData(uid);
     }
   }, [router]);
 
+  // update chart
   useEffect(() => {
     let accelChart = null;
     let gyroChart = null;
@@ -102,6 +134,7 @@ export default function Home() {
     };
   }, []);
 
+  // BLE connection
   useEffect(() => {
     return () => {
       // 組件卸載時斷開 BLE 連接
@@ -133,6 +166,7 @@ export default function Home() {
       await signOut(auth);
       sessionStorage.removeItem('user');
       sessionStorage.removeItem('username');
+      sessionStorage.removeItem('uid');
       router.push('/sign-in');
     } catch (error) {
       console.error('Logout error:', error);
@@ -366,32 +400,41 @@ export default function Home() {
         {/* Exercise Tracking Section - 改為純顯示 */}
         <div className="bg-white rounded-2xl shadow-lg p-6">
           <h3 className="text-xl font-semibold text-gray-800 mb-4">Exercise Tracking</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {Object.entries({
-              pushups: 'Push-ups',
-              situps: 'Sit-ups',
-              squats: 'Squats',
-              dumbbells: 'Dumbbells'
-            }).map(([key, label]) => (
-              <div key={key} className="bg-green-50 p-4 rounded-xl">
-                <h4 className="font-medium text-gray-800 mb-3">{label}</h4>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-700">Sets:</span>
-                    <span className="text-xl font-semibold text-gray-800">
-                      {exercises[key].sets}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-700">Reps:</span>
-                    <span className="text-xl font-semibold text-gray-800">
-                      {exercises[key].reps}
-                    </span>
+          { isLoading ? (
+              <div className="flex items-center justify-center">
+                <div className="flex flex-col items-center">
+                  <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-green-500" /> 
+                  <h1 className="text-gray-600 mt-2 text-3xl">Loading...</h1>
+                </div>
+              </div>) :(
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {Object.entries({
+                pushup: 'Push-ups',
+                situp: 'Sit-ups',
+                squat: 'Squats',
+                dumbbell: 'Dumbbells'
+              }).map(([key, label]) => (
+                <div key={key} className="bg-green-50 p-4 rounded-xl">
+                  <h4 className="font-medium text-gray-800 mb-3">{label}</h4>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-700">Sets:</span>
+                      <span className="text-xl font-semibold text-gray-800">
+                        {exercises[key].set}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-700">Reps:</span>
+                      <span className="text-xl font-semibold text-gray-800">
+                        {exercises[key].rep}
+                      </span>
+                    </div>
                   </div>
                 </div>
+              ))}
               </div>
-            ))}
-          </div>
+          )}
+          
         </div>
 
         {/* Sensor Data Section - 調整顯示的文字顏色 */}

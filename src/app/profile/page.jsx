@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { editInfo } from '../firebase/firestore';
 
 const Profile = () => {
   const router = useRouter();
@@ -18,6 +19,7 @@ const Profile = () => {
   useEffect(() => {
     const user = sessionStorage.getItem('user');
     const storedUsername = sessionStorage.getItem('username');
+    const uid = sessionStorage.getItem('uid');
     
     if (!user) {
       router.push('/sign-in');
@@ -41,6 +43,8 @@ const Profile = () => {
 
   const handleSave = () => {
     // 這裡可以加入儲存到資料庫的邏輯
+    // editInfo(editedInfo);
+    console.log(editedInfo);
     setUserInfo(editedInfo);
     setIsEditing(false);
   };
@@ -242,7 +246,7 @@ const Profile = () => {
                           <option value="">Select Gender</option>
                           <option value="Male">Male</option>
                           <option value="Female">Female</option>
-                          <option value="Other">Other</option>
+                          {/* <option value="Other">Other</option> */}
                         </select>
                       ) : (
                         <input
