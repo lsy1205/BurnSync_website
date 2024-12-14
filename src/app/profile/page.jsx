@@ -1,19 +1,26 @@
 'use client'
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { editInfo } from '../firebase/firestore';
+import { getUser, editInfo } from '../firebase/firestore';
 
 const Profile = () => {
   const router = useRouter();
+
+  const [isloading, setIsLoading] = useState(false);
+
   const [username, setUsername] = useState('');
   const [userInfo, setUserInfo] = useState({
-    height: '175',
-    weight: '70',
-    birthday: '1990-01-01',
-    gender: 'Male'
+    height: null,
+    weight: null,
+    birthday: null,
+    gender: null
   });
+  const [editedInfo, setEditedInfo] = useState({userInfo});
+
+  const [totalCalories, setTotalCalories] = useState(0);
+  const [totalExerciseDays, setTotalExerciseDays] = useState(0);
+
   const [isEditing, setIsEditing] = useState(false);
-  const [editedInfo, setEditedInfo] = useState({});
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
@@ -23,16 +30,24 @@ const Profile = () => {
     
     if (!user) {
       router.push('/sign-in');
-    } else if (storedUsername) {
-      setUsername(storedUsername);
+    } else{
       // 這裡可以從資料庫獲取用戶資料
-      // 目前使用模擬數據
-      setUserInfo({
-        height: '175',
-        weight: '70',
-        birthday: '1990-01-01',
-        gender: 'Male'
-      });
+      setUsername(storedUsername);
+      const getData = async(uid) => {
+        try{
+          setIsLoading(true);
+          const data = await getUser(uid);
+          console.log(data);
+          const info = data.info;
+          
+          setUserInfo(info);
+          setEditedInfo(info);
+          setIsLoading(false);
+        }catch(e){
+          console.log(e);
+        }
+      }
+      getData(uid);
     }
   }, [router]);
 
@@ -41,13 +56,27 @@ const Profile = () => {
     setEditedInfo(userInfo);
   };
 
-  const handleSave = () => {
-    // 這裡可以加入儲存到資料庫的邏輯
-    // editInfo(editedInfo);
-    console.log(editedInfo);
-    setUserInfo(editedInfo);
-    setIsEditing(false);
+  const handleSave = async () => {
+    const uid = sessionStorage.getItem('uid');
+    try {
+      const saveInfo = {
+        ...editedInfo,
+        birthday: new Date(editedInfo.birthday)
+      };
+      let res = await editInfo(uid, saveInfo);
+      console.log(res);
+      if (res.success) {
+        console.log('Edit Success');
+        setUserInfo(editedInfo);
+        setIsEditing(false);
+      } else {
+        throw new Error(res.error);
+      }
+    } catch (e) {
+      console.log(e);
+    }
   };
+  
 
   const handleCancel = () => {
     setIsEditing(false);
@@ -250,11 +279,11 @@ const Profile = () => {
                         </select>
                       ) : (
                         <input
-                          type="text"
-                          value={editedInfo[key] || ''}
+                          type="number"
+                          value={editedInfo[key] || 0}
                           onChange={(e) => setEditedInfo({
                             ...editedInfo,
-                            [key]: e.target.value
+                            [key]: Number(e.target.value)
                           })}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg 
                             focus:border-green-500 focus:ring-2 focus:ring-green-200 
@@ -264,7 +293,7 @@ const Profile = () => {
                     ) : (
                       <p className="text-gray-800 font-medium">
                         {key === 'birthday' 
-                          ? formatDate(userInfo[key])
+                          ? (userInfo.birthday ? formatDate(userInfo[key]) : 'Not Set')
                           : userInfo[key]
                         }
                       </p>
@@ -280,11 +309,11 @@ const Profile = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-green-50 p-4 rounded-xl text-center">
                   <p className="text-gray-600 mb-1">Total Exercise Days</p>
-                  <p className="text-2xl font-bold text-gray-800">15</p>
+                  <p className="text-2xl font-bold text-gray-800">{totalExerciseDays}</p>
                 </div>
                 <div className="bg-green-50 p-4 rounded-xl text-center">
-                  <p className="text-gray-600 mb-1">Total Calories Burnt</p>
-                  <p className="text-2xl font-bold text-gray-800">4,800</p>
+                  <p className="text-gray-600 mb-1">Total Calories Burned</p>
+                  <p className="text-2xl font-bold text-gray-800">{totalCalories}</p>
                 </div>
               </div>
             </div>

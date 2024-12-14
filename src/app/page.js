@@ -1,20 +1,33 @@
 'use client'
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+
 import { auth } from '@/app/firebase/config';
 import { signOut } from 'firebase/auth';
-import Chart from 'chart.js/auto';
 import { getUser } from './firebase/firestore';
+
+import ErrorModal from './components/ErrorModal';
+
+import Chart from 'chart.js/auto';
+
+import { getSuggestion } from './utils/gemini';
+
 export default function Home() {
   const router = useRouter();
   const [username, setUsername] = useState('');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
-  const [targetCalories, setTargetCalories] = useState('');
+  const [targetCalories, setTargetCalories] = useState(0);
   const [suggestion, setSuggestion] = useState('');
 
   const [isLoading, setIsLoading] = useState(false);
+
+  const [AILoading, setAILoading] = useState(false);
   
+  const [errors, setErrors] = useState({});
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
   // user information
   const [userInfo, setUserInfo] = useState({
     height: null,
@@ -22,39 +35,52 @@ export default function Home() {
     birthday: null,
     gender: null
   });
+
+  const [age, setAge] = useState(0);
+
   const [exercises, setExercises] = useState({
-    pushup: { set: 0, rep: 0 },
-    situp: { set: 0, rep: 0 },
-    squat: { set: 0, rep: 0 },
-    dumbbell: { set: 0, rep: 0 }
+    pushups: { sets: 0, reps: 0 },
+    situps: { sets: 0, reps: 0 },
+    squats: { sets: 0, reps: 0 },
+    dumbbells: { sets: 0, reps: 0 }
   });
+
+  const [isEditing, setIsEditing] = useState(false);
+  
+  const [editableExercises, setEditableExercises] = useState({
+    pushups: { sets: exercises.pushups.sets, reps: exercises.pushups.reps },
+    situps: { sets: exercises.situps.sets, reps: exercises.situps.reps },
+    squats: { sets: exercises.squats.sets, reps: exercises.squats.reps },
+    dumbbells: { sets: exercises.dumbbells.sets, reps: exercises.dumbbells.reps }
+  });
+  
+  const [calories, setCalories] = useState(0);
 
   const [bleDevice, setBleDevice] = useState(null);
   const [bleCharacteristic, setBleCharacteristic] = useState(null);
   const [charts, setCharts] = useState({ accel: null, gyro: null });
 
+
+
   useEffect(() => {
     const user = sessionStorage.getItem('user');
     const uid = sessionStorage.getItem('uid');
     const storedUsername = sessionStorage.getItem('username');
-    
     if (!user) {
       router.push('/sign-in');
-    } else if (storedUsername) {
+    } else {
       setUsername(storedUsername);
       const getData = async(uid) => {
         try{
           setIsLoading(true);
           const data = await getUser(uid);
-          const userExercise = {
-            pushup: data.pushup,
-            situp: data.situp,
-            squat: data.squat,
-            dumbbell: data.dumbbell
-          }
-          console.log(exercises)
+          // console.log(data);
+          const userExercise = data.exercises;
           setExercises(userExercise);
-          console.log(userExercise);
+
+          const info = data.info;
+          setUserInfo(info);
+          setAge(calculateAge(info.birthday));
           setIsLoading(false);
         }catch(e){
           console.log(e);
@@ -63,6 +89,21 @@ export default function Home() {
       getData(uid);
     }
   }, [router]);
+
+
+  // update calories
+  useEffect(() => {
+    let genderCoefficient = (userInfo.gender == "Male") ? 1.0 : 0.9;
+    let weightCoefficient = userInfo.weight / 70;
+    let ageCoefficient =  Math.max((1 - (age - 25) * 0.005), 0.75);
+    console.log("Age",age)
+    // console.log("Gender Co", genderCoefficient);
+    // console.log("Weight Co", weightCoefficient);
+    // console.log("Age Co", ageCoefficient); 
+    const C = genderCoefficient * weightCoefficient * ageCoefficient * (exercises.pushups.reps * 0.5 + exercises.situps.reps * 0.3 + exercises.squats.reps * 0.32 + exercises.dumbbells.reps * 0.4)
+    // console.log("Calories", C);
+    setCalories(C);
+  }, [exercises]);
 
   // update chart
   useEffect(() => {
@@ -243,24 +284,42 @@ export default function Home() {
     }
   };
 
-  const getSuggestion = async () => {
+  const handleSuggestion = async () => {
     try {
+      const missingInfo = Object.values(userInfo).some((info) => info === null);
+      if (missingInfo) {throw new Error('Missing user information.\nPlease complete your profile first.')};
+
+      setAILoading(true);
+      setSuggestion('Loading...');
+      const res = await getSuggestion(targetCalories, userInfo.height, userInfo.weight, age, userInfo.gender);
       // Gemini API 調用邏輯將在這裡實現
-      setSuggestion('AI suggestion will appear here...');
+      const reply = formatResponse(res);
+      setSuggestion(reply);
+      setAILoading(false);
     } catch (error) {
       console.error('Failed to get suggestion:', error);
+      handleError(error.message);
     }
   };
 
-  const updateExercise = (type, field, value) => {
-    setExercises(prev => ({
-      ...prev,
-      [type]: {
-        ...prev[type],
-        [field]: Math.max(0, parseInt(value) || 0)
-      }
-    }));
-  };
+  const handleEdit = () => {
+    setEditableExercises(exercises);
+    setIsEditing(true);
+  }
+
+  const handleSave = () => {
+    setIsEditing(false);
+    setExercises(editableExercises);
+  }
+
+  const handleCancel = () => {
+    setIsEditing(false);
+    setEditableExercises(exercises);
+  }
+
+  const handleMerge = async () => {
+
+   }
 
   const updateCharts = (accelData, gyroData) => {
     if (charts.accel && charts.gyro) {
@@ -283,6 +342,58 @@ export default function Home() {
       charts.gyro.update('none');
     }
   };
+
+  function calculateAge(birthDateString) {
+    const today = new Date();
+    const birthDate = new Date(birthDateString);
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDifference = today.getMonth() - birthDate.getMonth();
+    if (
+      monthDifference < 0 ||
+      (monthDifference === 0 && today.getDate() < birthDate.getDate())
+    ) {
+      age--;
+    }
+    return age;
+  }
+  const handleError = (error) => {
+    setErrorMessage(error);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+  };
+
+  const formatResponse = (response) => {
+    let formattedText = response;
+
+    // Replace bold: **text** => <strong>text</strong>
+    formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    console.log("1",formattedText);
+    // Replace italics: *text* => <em>text</em>
+    // (Do this now to prevent interfering with bullet points if bullets are processed differently)
+    formattedText = formattedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    console.log("2",formattedText);
+
+    // Replace bullet lines: lines starting with "* " => <li>...</li>
+    formattedText = formattedText.replace(/^\* (.*?)(?:\r?\n|$)/gm, '<li>$1</li>');
+    console.log("3",formattedText);
+    
+    // // Wrap <li> elements in a <ul> if any
+    // if (/<li>/.test(formattedText)) {
+    //   formattedText = '<ul>' + formattedText + '</ul>';
+    // }
+    console.log("4",formattedText);
+
+    // Replace newlines with paragraphs: \n => </p><p>
+    // Before this step, make sure the text is in a state where this won't break HTML structure.
+    formattedText = '<p>' + formattedText.replace(/\n/g, '</p><p>') + '</p>';
+
+    return formattedText;
+  };
+
+  
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-50">
@@ -374,6 +485,7 @@ export default function Home() {
         {/* Calories Input Section */}
         <div className="bg-white rounded-2xl shadow-lg p-6">
           <div className="space-y-4">
+            <h3 className="text-xl font-semibold text-gray-800"> Target Calories</h3>
             <div className="flex flex-col md:flex-row gap-4">
               <input
                 type="number"
@@ -383,58 +495,153 @@ export default function Home() {
                 className="flex-1 px-4 py-3 rounded-lg border border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all outline-none text-gray-800 placeholder-gray-400"
               />
               <button
-                onClick={getSuggestion}
-                className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg font-medium hover:from-green-600 hover:to-emerald-600 transition-all duration-200"
+                onClick={handleSuggestion}
+                disabled={AILoading} // Button is disabled while loading
+                className={`px-6 py-3 rounded-lg font-medium transition-all duration-200 ${
+                  AILoading
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:from-green-600 hover:to-emerald-600'
+                }`}
               >
-                {suggestion ? 'Regenerate Suggestion' : 'Get Suggestion'}
+                {AILoading ? (
+                  <div className="flex items-center space-x-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Loading...</span>
+                  </div>
+                ) : suggestion ? (
+                  'Regenerate Suggestion'
+                ) : (
+                  'Get Suggestion'
+                )}
               </button>
             </div>
-            {suggestion && (
-              <div className="p-4 bg-green-50 rounded-lg">
-                <p className="text-gray-700">{suggestion}</p>
+            {AILoading ? (
+              <div className="flex items-center space-x-2 p-4 bg-green-50 rounded-lg">
+                <div className="w-5 h-5 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-gray-700">Loading your suggestion...</p>
               </div>
+            ) : (
+              (
+                <div className="p-4 bg-green-50 rounded-lg">
+                  <div className="text-gray-700">{suggestion ? 
+                    <div className="mt-4 text-gray-700"
+                    dangerouslySetInnerHTML={{ __html: suggestion }}
+                  /> : "AI suggestion will display here."}</div>
+                </div>
+              )
             )}
           </div>
         </div>
 
-        {/* Exercise Tracking Section - 改為純顯示 */}
+
+        {/* Exercise Tracking Section */}
         <div className="bg-white rounded-2xl shadow-lg p-6">
-          <h3 className="text-xl font-semibold text-gray-800 mb-4">Exercise Tracking</h3>
-          { isLoading ? (
-              <div className="flex items-center justify-center">
-                <div className="flex flex-col items-center">
-                  <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-green-500" /> 
-                  <h1 className="text-gray-600 mt-2 text-3xl">Loading...</h1>
-                </div>
-              </div>) :(
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-semibold text-gray-800">Exercise Tracking</h3>
+            {!isEditing ? (
+              <button
+                onClick={handleEdit}
+                className="px-4 py-2 text-green-600 hover:text-green-700 font-medium"
+              >
+                Edit
+              </button>
+            ) : (
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSave}
+                  className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg font-medium hover:from-green-600 hover:to-emerald-600"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={handleCancel}
+                  className="px-4 py-2 border-2 border-green-500 text-green-600 rounded-lg font-medium hover:bg-green-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+          {isLoading ? (
+            <div className="flex items-center justify-center">
+              <div className="flex flex-col items-center">
+                <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-green-500" />
+                <h1 className="text-gray-600 mt-2 text-3xl">Loading...</h1>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {Object.entries({
-                pushup: 'Push-ups',
-                situp: 'Sit-ups',
-                squat: 'Squats',
-                dumbbell: 'Dumbbells'
+                pushups: 'Push-ups',
+                situps: 'Sit-ups',
+                squats: 'Squats',
+                dumbbells: 'Dumbbells',
               }).map(([key, label]) => (
                 <div key={key} className="bg-green-50 p-4 rounded-xl">
-                  <h4 className="font-medium text-gray-800 mb-3">{label}</h4>
+                  <h3 className="font-bold text-gray-800 mb-3">{label}</h3>
                   <div className="space-y-3">
                     <div className="flex justify-between items-center">
                       <span className="text-gray-700">Sets:</span>
-                      <span className="text-xl font-semibold text-gray-800">
-                        {exercises[key].set}
-                      </span>
+                      {isEditing ? (
+                        <input
+                          type="number"
+                          value={editableExercises[key]?.sets || 0}
+                          onChange={(e) =>
+                            setEditableExercises((prev) => ({
+                              ...prev,
+                              [key]: {
+                                ...prev[key],
+                                sets: e.target.value,
+                              },
+                            }))
+                          }
+                          className="border border-gray-300 rounded-lg px-2 py-1 text-gray-800 w-16"
+                        />
+                      ) : (
+                        <span className="text-xl font-semibold text-gray-800">
+                          {exercises[key].sets}
+                        </span>
+                      )}
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-gray-700">Reps:</span>
-                      <span className="text-xl font-semibold text-gray-800">
-                        {exercises[key].rep}
-                      </span>
+                      {isEditing ? (
+                        <input
+                          type="number"
+                          value={editableExercises[key]?.reps || 0}
+                          onChange={(e) =>
+                            setEditableExercises((prev) => ({
+                              ...prev,
+                              [key]: {
+                                ...prev[key],
+                                reps: e.target.value,
+                              },
+                            }))
+                          }
+                          className="border border-gray-300 rounded-lg px-2 py-1 text-gray-800 w-16"
+                        />
+                      ) : (
+                        <span className="text-xl font-semibold text-gray-800">
+                          {exercises[key].reps}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
               ))}
-              </div>
+            </div>
           )}
-          
+          <div className="flex justify-center mt-4">
+            <h3 className="mt-4 text-xl font-semibold text-gray-800">Calories Burned: {calories}</h3>
+          </div>
+          <div className="flex justify-center mt-4">
+            <button
+              onClick={handleMerge}
+              className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg font-medium hover:from-green-600 hover:to-emerald-600 transition-all duration-200"
+            >
+              Merge Data
+            </button>
+          </div>
         </div>
 
         {/* Sensor Data Section - 調整顯示的文字顏色 */}
@@ -459,6 +666,11 @@ export default function Home() {
           </div>
         </div>
       </div>
+      <ErrorModal
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        errorMessage={errorMessage}
+      />
     </div>
   );
 }

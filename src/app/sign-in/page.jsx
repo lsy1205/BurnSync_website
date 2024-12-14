@@ -20,6 +20,8 @@ const SignIn = () => {
   const [isLoading, setIsLoading] = useState(false);
   
   useEffect(() => {
+    console.log("auth")
+    console.log(auth);
     const user = sessionStorage.getItem('user');
     if (user) {
       router.push('/');
