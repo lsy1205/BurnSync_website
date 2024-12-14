@@ -3,15 +3,29 @@ import { useState, useEffect } from 'react';
 import { useCreateUserWithEmailAndPassword } from 'react-firebase-hooks/auth'
 import { auth } from '@/app/firebase/config'
 import { useRouter } from 'next/navigation';
+import { addUser } from '../firebase/firestore';
+import ErrorModal from '../components/ErrorModal';
+import { FaEye, FaEyeSlash } from 'react-icons/fa';
+
 
 const SignUp = () => {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  
   const [errors, setErrors] = useState({});
-  const [createUserWithEmailAndPassword] = useCreateUserWithEmailAndPassword(auth);
+
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
   const router = useRouter();
+
+  const [createUserWithEmailAndPassword] = useCreateUserWithEmailAndPassword(auth);
+  
+
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     const user = sessionStorage.getItem('user');
@@ -19,6 +33,15 @@ const SignUp = () => {
       router.push('/');
     }
   }, [router]);
+
+  const handleError = (error) => {
+    setErrorMessage(error);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+  };
 
   const validateForm = () => {
     const newErrors = {};
@@ -29,7 +52,7 @@ const SignUp = () => {
     }
 
     // Validate Email
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
     if (!email || !emailRegex.test(email)) {
       newErrors.email = 'Please enter a valid email address';
     }
@@ -54,17 +77,31 @@ const SignUp = () => {
     try {
       const res = await createUserWithEmailAndPassword(email, password);
       if (res) {
+        const uid = res.user.uid;
+        console.log(`User created with UID: ${uid}`);
+
         sessionStorage.setItem('user', true);
         sessionStorage.setItem('username', username);
+        sessionStorage.setItem('uid', uid )
+
+        try{
+          addUser(uid, username);
+        } catch(e){
+          console.log("Fail to store user");
+          console.log(e);
+        }
         setUsername('');
         setEmail('');
         setPassword('');
         setConfirmPassword('');
         router.push('/');
       }
+      else{
+        throw("Fail to register")
+      }
     } catch(e) {
-      console.error(e);
-      setErrors({ submit: 'Registration failed. Please try again.' });
+      console.log(e)
+      handleError(e);
     }
   };
 
@@ -100,25 +137,39 @@ const SignUp = () => {
               {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email}</p>}
             </div>
 
-            <div>
+            <div className="relative">
               <input 
-                type="password" 
+                type={showPassword ? 'text' : 'password'}
                 placeholder="Password" 
                 value={password} 
                 onChange={(e) => setPassword(e.target.value)} 
                 className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all outline-none text-gray-800 placeholder-gray-400"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500"
+              >
+                {!showPassword ? <FaEyeSlash /> : <FaEye />}
+              </button>
               {errors.password && <p className="text-red-500 text-sm mt-1">{errors.password}</p>}
             </div>
 
-            <div>
+            <div className="relative">
               <input 
-                type="password" 
+                type={showConfirmPassword ? 'text' : 'password'}
                 placeholder="Confirm Password" 
                 value={confirmPassword} 
                 onChange={(e) => setConfirmPassword(e.target.value)} 
                 className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all outline-none text-gray-800 placeholder-gray-400"
               />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500"
+              >
+                {!showConfirmPassword ? <FaEyeSlash /> : <FaEye />}
+              </button>
               {errors.confirmPassword && <p className="text-red-500 text-sm mt-1">{errors.confirmPassword}</p>}
             </div>
 
@@ -147,6 +198,11 @@ const SignUp = () => {
           </div>
         </div>
       </div>
+      <ErrorModal
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        errorMessage={errorMessage}
+      />
     </div>
   );
 };

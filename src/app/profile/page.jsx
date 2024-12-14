@@ -1,35 +1,53 @@
 'use client'
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { getUser, editInfo } from '../firebase/firestore';
 
 const Profile = () => {
   const router = useRouter();
+
+  const [isloading, setIsLoading] = useState(false);
+
   const [username, setUsername] = useState('');
   const [userInfo, setUserInfo] = useState({
-    height: '175',
-    weight: '70',
-    age: '25',
-    gender: 'Male'
+    height: null,
+    weight: null,
+    birthday: null,
+    gender: null
   });
+  const [editedInfo, setEditedInfo] = useState({userInfo});
+
+  const [totalCalories, setTotalCalories] = useState(0);
+  const [totalExerciseDays, setTotalExerciseDays] = useState(0);
+
   const [isEditing, setIsEditing] = useState(false);
-  const [editedInfo, setEditedInfo] = useState({});
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
     const user = sessionStorage.getItem('user');
     const storedUsername = sessionStorage.getItem('username');
+    const uid = sessionStorage.getItem('uid');
     
     if (!user) {
       router.push('/sign-in');
-    } else if (storedUsername) {
-      setUsername(storedUsername);
+    } else{
       // 這裡可以從資料庫獲取用戶資料
-      // 目前使用模擬數據
-      setUserInfo({
-        height: '175',
-        weight: '70',
-        age: '25',
-        gender: 'Male'
-      });
+      setUsername(storedUsername);
+      const getData = async(uid) => {
+        try{
+          setIsLoading(true);
+          const data = await getUser(uid);
+          console.log(data);
+          const info = data.info;
+          
+          setUserInfo(info);
+          setEditedInfo(info);
+          setIsLoading(false);
+        }catch(e){
+          console.log(e);
+        }
+      }
+      getData(uid);
     }
   }, [router]);
 
@@ -38,15 +56,98 @@ const Profile = () => {
     setEditedInfo(userInfo);
   };
 
-  const handleSave = () => {
-    // 這裡可以加入儲存到資料庫的邏輯
-    setUserInfo(editedInfo);
-    setIsEditing(false);
+  const handleSave = async () => {
+    const uid = sessionStorage.getItem('uid');
+    try {
+      const saveInfo = {
+        ...editedInfo,
+        birthday: new Date(editedInfo.birthday)
+      };
+      let res = await editInfo(uid, saveInfo);
+      console.log(res);
+      if (res.success) {
+        console.log('Edit Success');
+        setUserInfo(editedInfo);
+        setIsEditing(false);
+      } else {
+        throw new Error(res.error);
+      }
+    } catch (e) {
+      console.log(e);
+    }
   };
+  
 
   const handleCancel = () => {
     setIsEditing(false);
     setEditedInfo(userInfo);
+  };
+
+  const formatDate = (date) => {
+    return new Date(date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  const handleDateSelect = (year, month, day) => {
+    const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    setEditedInfo({
+      ...editedInfo,
+      birthday: date
+    });
+    setShowDatePicker(false);
+  };
+
+  const DatePicker = ({ onSelect }) => {
+    const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+    const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+
+    const years = Array.from({ length: 100 }, (_, i) => new Date().getFullYear() - i);
+    const months = Array.from({ length: 12 }, (_, i) => i + 1);
+    const days = Array.from(
+      { length: new Date(selectedYear, selectedMonth, 0).getDate() },
+      (_, i) => i + 1
+    );
+
+    return (
+      <div className="absolute top-full left-0 mt-1 w-full bg-white rounded-lg shadow-lg border border-gray-200 p-4 z-50">
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(Number(e.target.value))}
+            className="px-2 py-1 border rounded-lg focus:border-green-500 focus:ring-2 focus:ring-green-200 text-gray-800 bg-white"
+          >
+            {years.map(year => (
+              <option key={year} value={year} className="text-gray-800">{year}</option>
+            ))}
+          </select>
+          <select
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(Number(e.target.value))}
+            className="px-2 py-1 border rounded-lg focus:border-green-500 focus:ring-2 focus:ring-green-200 text-gray-800 bg-white"
+          >
+            {months.map(month => (
+              <option key={month} value={month} className="text-gray-800">
+                {new Date(2000, month - 1, 1).toLocaleString('default', { month: 'long' })}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="grid grid-cols-7 gap-1">
+          {days.map(day => (
+            <button
+              key={day}
+              onClick={() => onSelect(selectedYear, selectedMonth, day)}
+              className="p-2 hover:bg-green-100 rounded-lg transition-colors text-gray-800 font-medium hover:text-green-700"
+            >
+              {day}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -134,7 +235,7 @@ const Profile = () => {
                 {Object.entries({
                   height: 'Height (cm)',
                   weight: 'Weight (kg)',
-                  age: 'Age',
+                  birthday: 'Birthday',
                   gender: 'Gender'
                 }).map(([key, label]) => (
                   <div key={key} className="bg-green-50 p-4 rounded-xl">
@@ -142,17 +243,60 @@ const Profile = () => {
                       {label}
                     </label>
                     {isEditing ? (
-                      <input
-                        type="text"
-                        value={editedInfo[key] || ''}
-                        onChange={(e) => setEditedInfo({
-                          ...editedInfo,
-                          [key]: e.target.value
-                        })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-green-500 focus:ring-2 focus:ring-green-200 text-gray-800"
-                      />
+                      key === 'birthday' ? (
+                        <div className="relative">
+                          <input
+                            type="text"
+                            readOnly
+                            value={editedInfo[key] ? formatDate(editedInfo[key]) : 'Select Birthday'}
+                            onClick={() => setShowDatePicker(!showDatePicker)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg 
+                              focus:border-green-500 focus:ring-2 focus:ring-green-200 
+                              text-gray-800 bg-white cursor-pointer
+                              hover:border-green-400 transition-colors"
+                          />
+                          {showDatePicker && (
+                            <DatePicker onSelect={handleDateSelect} />
+                          )}
+                        </div>
+                      ) : key === 'gender' ? (
+                        <select
+                          value={editedInfo[key] || ''}
+                          onChange={(e) => setEditedInfo({
+                            ...editedInfo,
+                            [key]: e.target.value
+                          })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg 
+                            focus:border-green-500 focus:ring-2 focus:ring-green-200 
+                            text-gray-800 bg-white
+                            hover:border-green-400 transition-colors
+                            cursor-pointer"
+                        >
+                          <option value="">Select Gender</option>
+                          <option value="Male">Male</option>
+                          <option value="Female">Female</option>
+                          {/* <option value="Other">Other</option> */}
+                        </select>
+                      ) : (
+                        <input
+                          type="number"
+                          value={editedInfo[key] || 0}
+                          onChange={(e) => setEditedInfo({
+                            ...editedInfo,
+                            [key]: Number(e.target.value)
+                          })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg 
+                            focus:border-green-500 focus:ring-2 focus:ring-green-200 
+                            text-gray-800"
+                        />
+                      )
                     ) : (
-                      <p className="text-gray-800 font-medium">{userInfo[key]}</p>
+                      <p className="text-gray-800 font-medium">
+                        {key === 'birthday' 
+                          ? (userInfo.birthday ? formatDate(userInfo[key]) : 'Not Set')
+                          : userInfo[key]
+                        }
+                      </p>
                     )}
                   </div>
                 ))}
@@ -165,11 +309,11 @@ const Profile = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-green-50 p-4 rounded-xl text-center">
                   <p className="text-gray-600 mb-1">Total Exercise Days</p>
-                  <p className="text-2xl font-bold text-gray-800">15</p>
+                  <p className="text-2xl font-bold text-gray-800">{totalExerciseDays}</p>
                 </div>
                 <div className="bg-green-50 p-4 rounded-xl text-center">
-                  <p className="text-gray-600 mb-1">Total Calories Burnt</p>
-                  <p className="text-2xl font-bold text-gray-800">4,800</p>
+                  <p className="text-gray-600 mb-1">Total Calories Burned</p>
+                  <p className="text-2xl font-bold text-gray-800">{totalCalories}</p>
                 </div>
               </div>
             </div>
