@@ -9,7 +9,7 @@ export async function POST(req, res){
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
 
         // Ininitalise a generative model
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" })
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
 
         // Retrieve the data we recieve as part of the request body
         const data = await req.json()
