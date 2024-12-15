@@ -289,6 +289,8 @@ export default function Home() {
       const missingInfo = Object.values(userInfo).some((info) => info === null);
       if (missingInfo) {throw new Error('Missing user information.\nPlease complete your profile first.')};
 
+      if (!(targetCalories > 0)|| !(targetCalories)) { throw new Error('Please enter a valid target calories value.') };
+
       setAILoading(true);
       setSuggestion('Loading...');
       
@@ -403,22 +405,14 @@ Dumbbell: ___ sets, ___ repetitions`;
 
     // Replace bold: **text** => <strong>text</strong>
     formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    console.log("1",formattedText);
+
     // Replace italics: *text* => <em>text</em>
     // (Do this now to prevent interfering with bullet points if bullets are processed differently)
     formattedText = formattedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
-    console.log("2",formattedText);
 
     // Replace bullet lines: lines starting with "* " => <li>...</li>
     formattedText = formattedText.replace(/^\* (.*?)(?:\r?\n|$)/gm, '<li>$1</li>');
-    console.log("3",formattedText);
     
-    // // Wrap <li> elements in a <ul> if any
-    // if (/<li>/.test(formattedText)) {
-    //   formattedText = '<ul>' + formattedText + '</ul>';
-    // }
-    console.log("4",formattedText);
-
     // Replace newlines with paragraphs: \n => </p><p>
     // Before this step, make sure the text is in a state where this won't break HTML structure.
     formattedText = '<p>' + formattedText.replace(/\n/g, '</p><p>') + '</p>';
