@@ -4,13 +4,11 @@ import { useRouter } from 'next/navigation';
 
 import { auth } from '@/app/firebase/config';
 import { signOut } from 'firebase/auth';
-import { getUser } from './firebase/firestore';
+import { getUser, addExcercise, editExercise, uploadExercise } from './firebase/firestore';
 
 import ErrorModal from './components/ErrorModal';
 
 import Chart from 'chart.js/auto';
-
-import { getSuggestion } from './api/generate/route';
 
 export default function Home() {
   const router = useRouter();
@@ -23,6 +21,8 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
 
   const [AILoading, setAILoading] = useState(false);
+  
+  const [isMerging, setIsMerging] = useState(false);
   
   const [errors, setErrors] = useState({});
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -96,13 +96,8 @@ export default function Home() {
     let genderCoefficient = (userInfo.gender == "Male") ? 1.0 : 0.9;
     let weightCoefficient = userInfo.weight / 70;
     let ageCoefficient =  Math.max((1 - (age - 25) * 0.005), 0.75);
-    console.log("Age",age)
-    // console.log("Gender Co", genderCoefficient);
-    // console.log("Weight Co", weightCoefficient);
-    // console.log("Age Co", ageCoefficient); 
-    const C = genderCoefficient * weightCoefficient * ageCoefficient * (exercises.pushups.reps * 0.5 + exercises.situps.reps * 0.3 + exercises.squats.reps * 0.32 + exercises.dumbbells.reps * 0.4)
-    // console.log("Calories", C);
-    setCalories(C);
+    const C = genderCoefficient * weightCoefficient * ageCoefficient * (exercises.pushups.reps * 0.5 + exercises.situps.reps * 0.3 + exercises.squats.reps * 0.32 + exercises.dumbbells.reps * 0.4);
+    setCalories(C.toFixed(2));
   }, [exercises]);
 
   // update chart
@@ -214,6 +209,7 @@ export default function Home() {
     }
   };
 
+  // BLE connection function
   const handleBleConnection = async () => {
     if (isConnected) {
       try {
@@ -283,7 +279,30 @@ export default function Home() {
       }
     }
   };
+  // Chart update function
+  const updateCharts = (accelData, gyroData) => {
+    if (charts.accel && charts.gyro) {
+      // 更新加速度圖表
+      charts.accel.data.datasets.forEach((dataset, index) => {
+        dataset.data.push(accelData[index]);
+        if (dataset.data.length > 50) {
+          dataset.data.shift();
+        }
+      });
+      charts.accel.update('none');
 
+      // 更新陀螺儀圖表
+      charts.gyro.data.datasets.forEach((dataset, index) => {
+        dataset.data.push(gyroData[index]);
+        if (dataset.data.length > 50) {
+          dataset.data.shift();
+        }
+      });
+      charts.gyro.update('none');
+    }
+  };
+
+  // Geminin AI suggestion
   const handleSuggestion = async () => {
     try {
       const missingInfo = Object.values(userInfo).some((info) => info === null);
@@ -342,9 +361,28 @@ Dumbbell: ___ sets, ___ repetitions`;
     setIsEditing(true);
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (editableExercises.pushups.sets < 0 || editableExercises.pushups.reps < 0 || editableExercises.situps.sets < 0 || editableExercises.situps.reps < 0 || editableExercises.squats.sets < 0 || editableExercises.squats.reps < 0 || editableExercises.dumbbells.sets < 0 || editableExercises.dumbbells.reps < 0) {
+      handleError('Please enter valid values for sets and reps.');
+      return;
+    }
     setIsEditing(false);
     setExercises(editableExercises);
+    console.log(editableExercises);
+    try {
+      console.log("Save");
+      const updateDBRes = await editExercise({req: {uid: sessionStorage.getItem('uid'), exercises: editableExercises}});
+      if (updateDBRes.success) {
+        console.log("Successfully updated");
+      }else{
+        console.log("Failed to update database");
+        throw new Error(updateDBRes.error);
+      }
+      console.log(updateDBRes);
+    } catch (error) {
+      console.error('Failed to save exercises:', error);
+      handleError(error.message);
+    }
   }
 
   const handleCancel = () => {
@@ -353,31 +391,61 @@ Dumbbell: ___ sets, ___ repetitions`;
   }
 
   const handleMerge = async () => {
-
-   }
-
-  const updateCharts = (accelData, gyroData) => {
-    if (charts.accel && charts.gyro) {
-      // 更新加速度圖表
-      charts.accel.data.datasets.forEach((dataset, index) => {
-        dataset.data.push(accelData[index]);
-        if (dataset.data.length > 50) {
-          dataset.data.shift();
-        }
-      });
-      charts.accel.update('none');
-
-      // 更新陀螺儀圖表
-      charts.gyro.data.datasets.forEach((dataset, index) => {
-        dataset.data.push(gyroData[index]);
-        if (dataset.data.length > 50) {
-          dataset.data.shift();
-        }
-      });
-      charts.gyro.update('none');
+    console.log("Merge");
+    setIsMerging(true);
+    try{
+      let res = await uploadExercise({req: {uid: sessionStorage.getItem('uid'), calories: calories}});
+      if(res.success){
+        console.log("Successfully uploaded");
+        setExercises({
+          pushups: { sets: 0, reps: 0 },
+          situps: { sets: 0, reps: 0 },
+          squats: { sets: 0, reps: 0 },
+          dumbbells: { sets: 0, reps: 0 }
+        });
+        setEditableExercises(exercises);
+      }else{
+        console.log("Failed to upload");
+        throw new Error(res.error);
+      }
+    } catch (error) {
+      console.error('Failed to merge data:', error);
+      handleError(error.message);
     }
-  };
+    setIsMerging(false);
+  }
 
+  // handle inference
+  const handleInference = async () => {
+    try {
+      console.log("Inference");
+      // Inference API
+      // Update database
+      const type = "squats";
+      const reps = 6;
+      const updateDBRes = await addExcercise({req: {uid: sessionStorage.getItem('uid'), type: type, reps: reps}});
+      if (updateDBRes.success) {
+        console.log("Successfully updated:");
+        setExercises((prev) => ({
+          ...prev,
+          [type]: {
+            sets: prev[type].sets + 1,
+            reps: prev[type].reps + reps
+          }
+        }));
+        setEditableExercises(exercises);
+      }else{
+        console.log("Failed to update database");
+        throw new Error(updateDBRes.error);
+      }
+      console.log(updateDBRes);
+    } catch (error) {
+      console.error('Failed to get inference:', error);
+      handleError(error.message);
+    }
+  }
+
+  // Calculate age
   function calculateAge(birthDateString) {
     const today = new Date();
     const birthDate = new Date(birthDateString);
@@ -391,6 +459,8 @@ Dumbbell: ___ sets, ___ repetitions`;
     }
     return age;
   }
+
+  // Error handling
   const handleError = (error) => {
     setErrorMessage(error);
     setIsModalOpen(true);
@@ -419,8 +489,6 @@ Dumbbell: ___ sets, ___ repetitions`;
 
     return formattedText;
   };
-
-  
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-50">
@@ -618,7 +686,7 @@ Dumbbell: ___ sets, ___ repetitions`;
                               ...prev,
                               [key]: {
                                 ...prev[key],
-                                sets: e.target.value,
+                                sets: Number(e.target.value),
                               },
                             }))
                           }
@@ -641,7 +709,7 @@ Dumbbell: ___ sets, ___ repetitions`;
                               ...prev,
                               [key]: {
                                 ...prev[key],
-                                reps: e.target.value,
+                                reps: Number(e.target.value),
                               },
                             }))
                           }
@@ -663,10 +731,16 @@ Dumbbell: ___ sets, ___ repetitions`;
           </div>
           <div className="flex justify-center mt-4">
             <button
+              disabled={isEditing || isMerging}
               onClick={handleMerge}
-              className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg font-medium hover:from-green-600 hover:to-emerald-600 transition-all duration-200"
+              className=
+              {`px-6 py-3 rounded-lg font-medium transition-all duration-500 ${
+                (isEditing || isMerging)
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:from-green-600 hover:to-emerald-600'
+              }`}
             >
-              Merge Data
+              {isMerging ? "Merging Data" : "Merge Data"}
             </button>
           </div>
         </div>
@@ -698,6 +772,9 @@ Dumbbell: ___ sets, ___ repetitions`;
         onClose={handleCloseModal}
         errorMessage={errorMessage}
       />
+      <div className="flex justify-center mt-4">
+      <button className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg font-medium hover:from-green-600 hover:to-emerald-600 transition-all duration-200" onClick={handleInference}>Inference</button>
+      </div>
     </div>
   );
 }

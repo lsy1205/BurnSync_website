@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getUser, editInfo } from '../firebase/firestore';
+import { set } from 'firebase/database';
 
 const Profile = () => {
   const router = useRouter();
@@ -40,6 +41,8 @@ const Profile = () => {
           console.log(data);
           const info = data.info;
           
+          setTotalCalories(data.total_calories);
+          setTotalExerciseDays(data.total_exercise_day);
           setUserInfo(info);
           setEditedInfo(info);
           setIsLoading(false);
