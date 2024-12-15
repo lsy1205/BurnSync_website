@@ -10,7 +10,7 @@ import ErrorModal from './components/ErrorModal';
 
 import Chart from 'chart.js/auto';
 
-import { getSuggestion } from './utils/gemini';
+import { getSuggestion } from './api/generate/route';
 
 export default function Home() {
   const router = useRouter();
@@ -291,11 +291,44 @@ export default function Home() {
 
       setAILoading(true);
       setSuggestion('Loading...');
-      const res = await getSuggestion(targetCalories, userInfo.height, userInfo.weight, age, userInfo.gender);
-      // Gemini API 調用邏輯將在這裡實現
-      const reply = formatResponse(res);
-      setSuggestion(reply);
-      setAILoading(false);
+      
+      // Prompt for the AI model
+      const prompt = 
+      `Based on the following details:
+- approximate calories burned: ${targetCalories}
+- age: ${age}
+- gender: ${userInfo.gender}
+- height: ${userInfo.height} cm
+- weight: ${userInfo.weight} kg
+please answer in the format below to  effectively achieve the approximate calories burned
+
+Push-ups:  ___ sets, ___ repetitions
+Sit-ups: ___ sets, ___ repetitions
+Squats: ___ sets, ___ repetitions
+Dumbbell: ___ sets, ___ repetitions`;
+
+      // console.log(prompt);
+      // use the fetch method to send an http request to /api/generate endpoint
+      const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type':'application/json',
+        },
+        body: JSON.stringify({body: prompt})
+      });
+
+      // Waits for the response to be converted to JSON format and stores it in the data variable
+      const data = await response.json();
+      
+      //  If successful, updates the output state with the output field from the response data
+      if(response.ok) {
+        const res = data.output;
+        const reply = formatResponse(res);
+        setSuggestion(reply);
+        setAILoading(false);
+      } else {
+        throw new Error(data.error);
+      }
     } catch (error) {
       console.error('Failed to get suggestion:', error);
       handleError(error.message);
