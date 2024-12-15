@@ -13,7 +13,7 @@ export async function POST(req, res){
 
         // Retrieve the data we recieve as part of the request body
         const data = await req.json()
-        // console.log(data);
+        // console.log(data)0;
         // Define a prompt varibale
         const prompt = data.body
 
@@ -26,5 +26,6 @@ export async function POST(req, res){
         return NextResponse.json({ output: output })
     } catch (error) {
         console.error(error)
+        return NextResponse.error(new Error("Internal Server Error"));
     }
 }
