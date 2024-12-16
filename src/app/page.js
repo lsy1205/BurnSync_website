@@ -60,7 +60,9 @@ export default function Home() {
   const [bleCharacteristic, setBleCharacteristic] = useState(null);
   const [charts, setCharts] = useState({ accel: null, gyro: null });
 
-
+  let prevRecord = false;
+  let record = false;
+  let imuData = {"AccelX":[], "AccelY":[], "AccelZ":[], "GyroX":[], "GyroY":[], "GyroZ":[]}
 
   useEffect(() => {
     const user = sessionStorage.getItem('user');
@@ -248,17 +250,46 @@ export default function Home() {
 
         characteristic.addEventListener('characteristicvaluechanged', (event) => {
           const data = event.target.value;
+          // console.log('Received data:', data);
           const accelX = data.getFloat32(0, true);
           const accelY = data.getFloat32(4, true);
           const accelZ = data.getFloat32(8, true);
           const gyroX = data.getFloat32(12, true);
           const gyroY = data.getFloat32(16, true);
           const gyroZ = data.getFloat32(20, true);
+          
+          const recordByte = data.getUint8(24);
+          record = recordByte === 1; // true or false
+          
+          console.log('Record:', record, prevRecord);
+          // deal with recording data 
+          if (record) {
+            console.log("Recording");
+            imuData["AccelX"].push(accelX);
+            imuData["AccelY"].push(accelY);
+            imuData["AccelZ"].push(accelZ);
+            imuData["GyroX"].push(gyroX);
+            imuData["GyroY"].push(gyroY);
+            imuData["GyroZ"].push(gyroZ);
+          }
 
+          // deal with inference 
+          if (!record && prevRecord) {
+            handleInference();
+            imuData["AccelX"]=[];
+            imuData["AccelY"]=[];
+            imuData["AccelZ"]=[];
+            imuData["GyroX"]=[];
+            imuData["GyroY"]=[];
+            imuData["GyroZ"]=[];
+            console.log(imuData);
+          }
           updateCharts(
             [accelX, accelY, accelZ],
             [gyroX, gyroY, gyroZ]
           );
+
+          prevRecord = record;
         });
 
         await characteristic.startNotifications();
@@ -420,27 +451,52 @@ Dumbbell: ___ sets, ___ repetitions`;
     try {
       console.log("Inference");
       // Inference API
-      // Update database
-      const type = "squats";
-      const reps = 6;
-      const updateDBRes = await addExcercise({req: {uid: sessionStorage.getItem('uid'), type: type, reps: reps}});
-      if (updateDBRes.success) {
-        console.log("Successfully updated:");
-        setExercises((prev) => ({
-          ...prev,
-          [type]: {
-            sets: prev[type].sets + 1,
-            reps: prev[type].reps + reps
+      console.log(imuData);
+      const response = await fetch('/api/inference',{
+        method: 'POST',
+        headers: {
+          'Content-Type':'application/json',
+        },
+        body: JSON.stringify(imuData)
+      })
+      const inferenceResponse = await response.json();
+      console.log(inferenceResponse);
+      if (inferenceResponse.success) {
+        console.log("Successfully got inference");
+        
+        let result = inferenceResponse.result[0];
+        console.log(result);
+        if (result.type) {
+          // Update database
+          const type = result.type;
+          const reps = result.reps;
+          const updateDBRes = await addExcercise({req: {uid: sessionStorage.getItem('uid'), type: type, reps: reps}});
+          if (updateDBRes.success) {
+            console.log("Successfully updated:");
+            setExercises((prev) => ({
+              ...prev,
+              [type]: {
+                sets: prev[type].sets + 1,
+                reps: prev[type].reps + reps
+              }
+            }));
+            setEditableExercises(exercises);
+            console.log(updateDBRes);
+          } else{
+            console.log("Failed to update database");
+            throw new Error(updateDBRes.error);
           }
-        }));
-        setEditableExercises(exercises);
-      }else{
-        console.log("Failed to update database");
-        throw new Error(updateDBRes.error);
+        } else {
+          console.log("No exercise detected");
+        }
+        
+      } else {
+        console.log("Inference Failed");
+        throw new Error(inferenceResponse.error);
       }
-      console.log(updateDBRes);
+      
     } catch (error) {
-      console.error('Failed to get inference:', error);
+      console.error('handle inference failed: ', error);
       handleError(error.message);
     }
   }
@@ -773,7 +829,12 @@ Dumbbell: ___ sets, ___ repetitions`;
         errorMessage={errorMessage}
       />
       <div className="flex justify-center mt-4">
-      <button className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg font-medium hover:from-green-600 hover:to-emerald-600 transition-all duration-200" onClick={handleInference}>Inference</button>
+        <button className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg font-medium hover:from-green-600 hover:to-emerald-600 transition-all duration-200" onClick={handleInference}>Inference</button>
+        <button className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg font-medium hover:from-green-600 hover:to-emerald-600 transition-all duration-200" onClick={()=>{
+          console.log("change record");
+          record = !record
+          console.log(record);
+          }}>change record</button>
       </div>
     </div>
   );
