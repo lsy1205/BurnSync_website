@@ -261,7 +261,7 @@ export default function Home() {
           const recordByte = data.getUint8(24);
           record = recordByte === 1; // true or false
           
-          console.log('Record:', record, prevRecord);
+          // console.log('Record:', record, prevRecord);
           // deal with recording data 
           if (record) {
             console.log("Recording");
