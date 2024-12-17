@@ -828,14 +828,6 @@ Dumbbell: ___ sets, ___ repetitions`;
         onClose={handleCloseModal}
         errorMessage={errorMessage}
       />
-      <div className="flex justify-center mt-4">
-        <button className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg font-medium hover:from-green-600 hover:to-emerald-600 transition-all duration-200" onClick={handleInference}>Inference</button>
-        <button className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg font-medium hover:from-green-600 hover:to-emerald-600 transition-all duration-200" onClick={()=>{
-          console.log("change record");
-          record = !record
-          console.log(record);
-          }}>change record</button>
-      </div>
     </div>
   );
 }
