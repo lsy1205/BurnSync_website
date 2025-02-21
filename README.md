@@ -11,7 +11,7 @@
 **If you have any question about this project, do not hesitate to contact us for detail explanation!!!**
 
 ## Introduction
-This is the repository of our custom website for BurnSync project. BurnSync is a smart fitness assistant with various functions. To know more about BurnSync, please refer to [our project repository](https://github.com/lsy1205/AIoT_Final_Project.git).
+This is the repository of our custom website for BurnSync project. BurnSync is a smart fitness assistant with various functions. To know more about BurnSync, please refer to [our project repository](https://github.com/lsy1205/BurnSync.git).
 
 ## Deploy Link
 We already deployed this website with Vercel service. Follow the [link](https://burn-sync-website.vercel.app/sign-in) to visit the deployed website.  
