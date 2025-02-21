@@ -16,6 +16,10 @@ This is the repository of our custom website for BurnSync project. BurnSync is a
 ## Deploy Link
 We already deployed this website with Vercel service. Follow the [link](https://burn-sync-website.vercel.app/sign-in) to visit the deployed website.  
 
+## Related repositories
+* [BurnSync Project](https://github.com/lsy1205/BurnSync.git)
+* [BurnSync Classification Model](https://huggingface.co/spaces/AIOT12345/IMU_CLASSIFY)
+
 ---
 ---
 ---
