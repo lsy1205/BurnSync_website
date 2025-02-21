@@ -20,11 +20,10 @@ We already deployed this website with Vercel service. Follow the [link](https://
 * [BurnSync Project](https://github.com/lsy1205/BurnSync.git)
 * [BurnSync Classification Model](https://huggingface.co/spaces/AIOT12345/IMU_CLASSIFY)
 
----
----
----
----
----  
+<br />
+<br />
+<br />
+
 # README.md of NEXT.JS
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
 
