@@ -14,8 +14,13 @@
 This is the repository of our custom website for BurnSync project. BurnSync is a smart fitness assistant with various functions. To know more about BurnSync, please refer to [our project repository](https://github.com/lsy1205/AIoT_Final_Project.git).
 
 ## Deploy Link
-We already deployed this website with Vercel service. Follow the [link](https://burn-sync-website.vercel.app/sign-in) to visit the deployed website.
+We already deployed this website with Vercel service. Follow the [link](https://burn-sync-website.vercel.app/sign-in) to visit the deployed website.  
 
+---
+---
+---
+---
+---  
 # README.md of NEXT.JS
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
 
